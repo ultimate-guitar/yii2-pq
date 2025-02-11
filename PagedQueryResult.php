@@ -7,7 +7,11 @@
 
 namespace sammaye\pq;
 
+use Iterator;
 use yii\base\BaseObject;
+use yii\db\Connection;
+use yii\db\DataReader;
+use yii\db\Exception;
 
 /**
  * BatchQueryResult represents a batch query from which you can retrieve data in batches.
@@ -28,58 +32,58 @@ use yii\base\BaseObject;
  * @author Qiang Xue <qiang.xue@gmail.com>
  * @since 2.0
  */
-class PagedQueryResult extends BaseObject implements \Iterator
+class PagedQueryResult extends BaseObject implements Iterator
 {
     /**
-     * @var Connection the DB connection to be used when performing batch query.
+     * @var Connection|null the DB connection to be used when performing batch query.
      * If null, the "db" application component will be used.
      */
-    public $db;
+    public ?Connection $db = null;
     /**
      * @var Query the query object associated with this batch query.
      * Do not modify this property directly unless after [[reset()]] is called explicitly.
      */
-    public $query;
+    public Query $query;
     /**
      * @var integer the number of rows to be returned in each batch.
      */
-    public $batchSize = 100;
+    public int $batchSize = 100;
     /**
      * @var boolean whether to return a single row during each iteration.
      * If false, a whole batch of rows will be returned in each iteration.
      */
-    public $each = false;
+    public bool $each = false;
     /**
      * @var boolean whether or not to paginate the query via offset and limit
      * This is helpful for PHP7 where resuls sets actually add to a PHP's process 
      * memory usage by default
      */
-    public $page = false;
+    public bool $page = false;
 
     /**
-     * @var DataReader the data reader associated with this batch query.
+     * @var DataReader|null the data reader associated with this batch query.
      */
-    private $_dataReader;
+    private ?DataReader $_dataReader = null;
     /**
-     * @var array the data retrieved in the current batch
+     * @var array|null the data retrieved in the current batch
      */
-    private $_batch;
+    private ?array $_batch = null;
     /**
      * @var mixed the value for the current iteration
      */
-    private $_value;
+    private mixed $_value = null;
     /**
-     * @var string|integer the key for the current iteration
+     * @var string|integer|null the key for the current iteration
      */
-    private $_key;
+    private int|string|null $_key = null;
     /**
-     * @var integer holds the value of the offset for pagination
+     * @var integer|null holds the value of the offset for pagination
      */
-    private $_offset;
+    private ?int $_offset = null;
     /**
-     * @var integer holds the limit of the query, if one is provided
+     * @var integer|null holds the limit of the query, if one is provided
      */
-    private $_limit;
+    private ?int $_limit = null;
 
 
     /**
@@ -95,11 +99,9 @@ class PagedQueryResult extends BaseObject implements \Iterator
      * Resets the batch query.
      * This method will clean up the existing batch query so that a new batch query can be performed.
      */
-    public function reset()
+    public function reset(): void
     {
-        if ($this->_dataReader !== null) {
-            $this->_dataReader->close();
-        }
+        $this->_dataReader?->close();
         $this->_dataReader = null;
         $this->_batch = null;
         $this->_value = null;
@@ -111,8 +113,9 @@ class PagedQueryResult extends BaseObject implements \Iterator
     /**
      * Resets the iterator to the initial state.
      * This method is required by the interface [[\Iterator]].
+     * @throws Exception
      */
-    public function rewind()
+    public function rewind(): void
     {
         $this->reset();
         $this->next();
@@ -121,10 +124,11 @@ class PagedQueryResult extends BaseObject implements \Iterator
     /**
      * Moves the internal pointer to the next dataset.
      * This method is required by the interface [[\Iterator]].
+     * @throws Exception
      */
-    public function next()
+    public function next(): void
     {
-        if ($this->_batch === null || !$this->each || $this->each && next($this->_batch) === false) {
+        if ($this->_batch === null || !$this->each || next($this->_batch) === false) {
             $this->_batch = $this->fetchData();
             reset($this->_batch);
         }
@@ -147,37 +151,36 @@ class PagedQueryResult extends BaseObject implements \Iterator
     /**
      * Fetches the next batch of data.
      * @return array the data fetched
+     * @throws Exception
      */
-    protected function fetchData()
+    protected function fetchData(): array
     {
-        if($this->_batch === null && $this->query->limit !== null){
+        if ($this->_batch === null && $this->query->limit !== null) {
             // If it hasn't been fetched lets record the limit
             $this->_limit = $this->query->limit;
         }
-        
-        if($this->page){
-            
+
+        $batchSize = $this->batchSize;
+        if ($this->page) {
             // If we are reaching near of the end of the predefined limit then
             // let's sort that out
-            $batchSize = $this->batchSize;
-            if($this->_limit !== null){
-                if($this->_offset > $this->_limit){
+            if ($this->_limit !== null) {
+                if ($this->_offset > $this->_limit) {
                     $batchSize = 0;
-                }elseif($this->_offset === $this->_limit){
+                } elseif ($this->_offset === $this->_limit) {
                     // Normally DB techs are exclusive in OFFSET
                     $batchSize = 1;
-                }elseif(($this->batchSize + $this->_offset) >= $this->_limit){
+                } elseif (($this->batchSize + $this->_offset) >= $this->_limit) {
                     $batchSize = $this->_limit - $this->_offset;
                 }
             }
-            
+
             $this->_dataReader = $this->query
                 ->limit($batchSize)
                 ->offset($this->_offset)
                 ->createCommand($this->db)
                 ->query();
-                
-        }elseif($this->_dataReader === null){
+        } elseif ($this->_dataReader === null) {
             $this->_dataReader = $this->query->createCommand($this->db)->query();
         }
 
@@ -186,8 +189,8 @@ class PagedQueryResult extends BaseObject implements \Iterator
         while ($count++ < $this->batchSize && ($row = $this->_dataReader->read())) {
             $rows[] = $row;
         }
-        
-        if($this->page){
+
+        if ($this->page) {
             // If the result has been pulled without error then increment the offset
             $this->_offset += $batchSize;
         }
@@ -200,7 +203,7 @@ class PagedQueryResult extends BaseObject implements \Iterator
      * This method is required by the interface [[\Iterator]].
      * @return integer the index of the current row.
      */
-    public function key()
+    public function key(): int
     {
         return $this->_key;
     }
@@ -210,7 +213,7 @@ class PagedQueryResult extends BaseObject implements \Iterator
      * This method is required by the interface [[\Iterator]].
      * @return mixed the current dataset.
      */
-    public function current()
+    public function current(): mixed
     {
         return $this->_value;
     }
@@ -220,7 +223,7 @@ class PagedQueryResult extends BaseObject implements \Iterator
      * This method is required by the interface [[\Iterator]].
      * @return boolean whether there is a valid dataset at the current position.
      */
-    public function valid()
+    public function valid(): bool
     {
         return !empty($this->_batch);
     }
