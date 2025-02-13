@@ -9,7 +9,7 @@ This extension is 99% for MySQL users.
 
 Just include it in your composer:
 
-    php composer require "muse-tech/yii2-pq":"^1.2"
+    php composer require "sammaye/yii2-pq":"~1.0.0"
 
 ## Usage
 
